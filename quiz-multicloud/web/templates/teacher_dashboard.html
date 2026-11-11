@@ -1,30 +1,62 @@
 {% extends "base.html" %}
-{% block title %}Bài thi của tôi{% endblock %}
+{% block title %}Bảng điều khiển{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <h3 class="mb-0">Bài thi của tôi</h3>
-  <a href="{{ url_for('exam_new') }}" class="btn btn-primary"><i class="bi bi-plus-lg"></i> Tạo bài thi</a>
+<div class="qc-page-head">
+  <div>
+    <div class="qc-section-title">Bảng điều khiển giáo viên</div>
+    <h2>Xin chào, {{ g.user.name }} 👋</h2>
+  </div>
+  <a href="{{ url_for('exam_new') }}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i> Tạo bài thi</a>
 </div>
+
+<div class="row g-3 mb-4">
+  {% for icon, tone, value, label in [
+    ('bi-journal-text', 'tone-indigo', summary.exams, 'Bài thi'),
+    ('bi-broadcast', 'tone-cyan', summary.published, 'Đang mở'),
+    ('bi-people', 'tone-pink', summary.submissions, 'Bài đã chấm'),
+    ('bi-speedometer2', 'tone-amber', summary.avg|num ~ '%', 'Điểm trung bình'),
+    ('bi-trophy', 'tone-green', summary.pass_rate|num ~ '%', 'Tỉ lệ đạt'),
+  ] %}
+  <div class="col-6 col-lg">
+    <div class="qc-card qc-stat h-100">
+      <div class="icon {{ tone }}"><i class="bi {{ icon }}"></i></div>
+      <div><div class="value">{{ value }}</div><div class="label">{{ label }}</div></div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="qc-section-title mb-3">Bài thi của tôi</div>
 {% if not exams %}
-  <div class="card p-4 text-center text-secondary">Chưa có bài thi nào.</div>
+  <div class="qc-card qc-empty"><i class="bi bi-journal-plus"></i>Chưa có bài thi nào. Bấm <b>Tạo bài thi</b> để bắt đầu.</div>
 {% else %}
-<div class="card">
-  <table class="table table-hover mb-0 align-middle">
-    <thead><tr><th>Tên bài thi</th><th>Câu hỏi</th><th>Bài nộp</th><th>Trạng thái</th><th></th></tr></thead>
-    <tbody>
-    {% for e in exams %}
-      <tr>
-        <td><a href="{{ url_for('exam_manage', exam_id=e.id) }}">{{ e.title }}</a></td>
-        <td>{{ e.questions|length }}</td>
-        <td>{{ e.submissions|length }}</td>
-        <td>{% if e.published %}<span class="badge text-bg-success">Đang mở</span>{% else %}<span class="badge text-bg-secondary">Nháp</span>{% endif %}</td>
-        <td class="text-end">
-          <a class="btn btn-sm btn-outline-primary" href="{{ url_for('exam_results', exam_id=e.id) }}"><i class="bi bi-bar-chart"></i> Kết quả</a>
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
+<div class="row g-3">
+  {% for e in exams %}
+    {% set st = stats[e.id] %}
+    <div class="col-md-6 col-xl-4">
+      <div class="qc-card qc-card-hover p-4 h-100 d-flex flex-column">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          {% if e.published %}<span class="qc-chip success"><i class="bi bi-circle-fill" style="font-size:.45rem"></i> Đang mở</span>
+          {% else %}<span class="qc-chip muted"><i class="bi bi-pencil"></i> Nháp</span>{% endif %}
+          <span class="small text-secondary"><i class="bi bi-clock"></i> {{ e.duration_minutes }} phút</span>
+        </div>
+        <h5 class="mb-1"><a href="{{ url_for('exam_manage', exam_id=e.id) }}" class="text-reset text-decoration-none stretched-link-none">{{ e.title }}</a></h5>
+        <p class="small text-secondary mb-3">{{ e.description or 'Không có mô tả' }}</p>
+        <div class="d-flex gap-3 small mb-3">
+          <span><i class="bi bi-list-ol text-primary"></i> {{ e.questions|length }} câu</span>
+          <span><i class="bi bi-people text-primary"></i> {{ e.submissions|length }} bài nộp</span>
+        </div>
+        {% if st %}
+          <div class="d-flex justify-content-between small mb-1"><span class="text-secondary">Điểm TB</span><b>{{ st.avg|num }}%</b></div>
+          <div class="qc-progress mb-3"><span style="width: {{ st.avg }}%"></span></div>
+        {% endif %}
+        <div class="mt-auto d-flex gap-2">
+          <a class="btn btn-soft btn-sm flex-grow-1" href="{{ url_for('exam_manage', exam_id=e.id) }}"><i class="bi bi-pencil-square"></i> Soạn đề</a>
+          <a class="btn btn-ghost btn-sm flex-grow-1" href="{{ url_for('exam_results', exam_id=e.id) }}"><i class="bi bi-bar-chart"></i> Kết quả</a>
+        </div>
+      </div>
+    </div>
+  {% endfor %}
 </div>
 {% endif %}
 {% endblock %}
