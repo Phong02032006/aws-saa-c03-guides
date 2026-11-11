@@ -12,7 +12,7 @@ import grader_client
 from auth import bp as auth_bp
 from auth import login_required
 from config import Config
-from models import Exam, Question, Submission, User, db
+from models import Exam, Question, Submission, db
 
 LETTERS = "ABCDEFGH"
 
@@ -49,6 +49,8 @@ def register_security(app):
 
     app.jinja_env.globals.update(csrf_token=csrf_token, letters=LETTERS)
     app.jinja_env.filters["num"] = lambda x: "" if x is None else f"{x:g}"
+    # Vietnamese names put the given name last, so use the last word's initial.
+    app.jinja_env.filters["initial"] = lambda name: (name.split()[-1][:1] if name and name.split() else "?").upper()
 
 
 def _own_exam(exam_id):
@@ -127,7 +129,16 @@ def register_routes(app):
     @login_required("teacher")
     def teacher_dashboard():
         exams = Exam.query.filter_by(teacher_id=g.user.id).order_by(Exam.created_at.desc()).all()
-        return render_template("teacher_dashboard.html", exams=exams)
+        graded = [s for e in exams for s in e.submissions if s.status == "graded"]
+        summary = {
+            "exams": len(exams),
+            "published": sum(1 for e in exams if e.published),
+            "submissions": len(graded),
+            "avg": round(statistics.mean(s.percent for s in graded), 1) if graded else 0,
+            "pass_rate": round(100 * sum(1 for s in graded if s.passed) / len(graded), 1) if graded else 0,
+        }
+        return render_template("teacher_dashboard.html", exams=exams, summary=summary,
+                               stats={e.id: _exam_stats(e) for e in exams})
 
     @app.route("/teacher/exams/new", methods=["GET", "POST"])
     @login_required("teacher")
@@ -344,28 +355,18 @@ def register_routes(app):
 
 def register_cli(app):
     @app.cli.command("init-db")
-    @click.option("--demo", is_flag=True, help="Thêm 1 giáo viên và 1 bài thi mẫu")
+    @click.option("--demo", is_flag=True, help="Thêm giáo viên, bài thi và bài nộp mẫu")
     def init_db(demo):
         """Create tables (works on SQLite and Azure SQL)."""
         db.create_all()
         click.echo("Tables created.")
-        if demo and not Exam.query.first():
-            teacher = User.query.filter_by(external_id="dev:teacher@demo.local").first() or User(
-                external_id="dev:teacher@demo.local", name="Giáo viên Demo", email="teacher@demo.local",
-                role="teacher")
-            exam = Exam(title="Điện toán đám mây - Kiểm tra 15 phút", teacher=teacher, duration_minutes=10,
-                        description="Bài thi mẫu", pass_percent=50, published=True)
-            samples = [
-                ("Dịch vụ nào của AWS dùng để lưu trữ object?", ["Amazon EC2", "Amazon S3", "Amazon RDS", "AWS Lambda"], [1]),
-                ("Microsoft Entra ID dùng cho mục đích gì?", ["Lưu file", "Quản lý danh tính & phân quyền", "Chạy container", "Gửi email"], [1]),
-                ("Những dịch vụ nào là serverless?", ["AWS Lambda", "Amazon EC2", "Azure Functions", "Azure VM"], [0, 2]),
-                ("Presigned URL của S3 dùng để?", ["Cấp quyền truy cập object tạm thời", "Xoá bucket", "Tạo IAM user", "Mã hoá ổ đĩa"], [0]),
-            ]
-            for i, (text, opts, correct) in enumerate(samples):
-                exam.questions.append(Question(text=text, options=opts, correct=correct, points=1, position=i))
-            db.session.add(exam)
-            db.session.commit()
-            click.echo("Demo data added.")
+        if demo:
+            from demo_data import seed_demo
+
+            # Local grading builds download URLs with url_for, which needs a request context.
+            with app.test_request_context():
+                added = seed_demo(app, lambda sub: _grade_and_save(app, sub))
+            click.echo("Demo data added." if added else "Demo data already present.")
 
 
 app = create_app()

@@ -1,45 +1,56 @@
 {% extends "base.html" %}
 {% block title %}Kết quả - {{ exam.title }}{% endblock %}
 {% block content %}
-<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-  <div>
-    <a href="{{ url_for('exam_manage', exam_id=exam.id) }}" class="small">&larr; {{ exam.title }}</a>
-    <h3 class="mb-0">Kết quả bài thi</h3>
-  </div>
+<a href="{{ url_for('exam_manage', exam_id=exam.id) }}" class="qc-breadcrumb"><i class="bi bi-arrow-left"></i> {{ exam.title }}</a>
+<div class="qc-page-head mt-1">
+  <h2>Kết quả bài thi</h2>
   <div class="d-flex gap-2">
-    <a class="btn btn-outline-success" href="{{ url_for('exam_results_csv', exam_id=exam.id) }}"><i class="bi bi-filetype-csv"></i> Xuất CSV</a>
-    <a class="btn btn-outline-primary" href="{{ url_for('exam_report', exam_id=exam.id) }}" target="_blank"><i class="bi bi-file-earmark-text"></i> Báo cáo HTML</a>
+    <a class="btn btn-ghost" href="{{ url_for('exam_results_csv', exam_id=exam.id) }}"><i class="bi bi-filetype-csv text-success"></i> Xuất CSV</a>
+    <a class="btn btn-primary" href="{{ url_for('exam_report', exam_id=exam.id) }}" target="_blank"><i class="bi bi-file-earmark-bar-graph"></i> Báo cáo HTML</a>
   </div>
 </div>
 
 {% if stats %}
 <div class="row g-3 mb-4">
-  {% for label, value in [('Số bài nộp', stats.count), ('Điểm TB', stats.avg ~ '%'), ('Cao nhất', stats.max ~ '%'), ('Thấp nhất', stats.min ~ '%'), ('Tỉ lệ đạt', stats.pass_rate ~ '%')] %}
-    <div class="col"><div class="card p-3 text-center"><div class="text-secondary small">{{ label }}</div><div class="fs-4 fw-bold">{{ value }}</div></div></div>
+  {% for icon, tone, value, label in [
+    ('bi-people', 'tone-indigo', stats.count, 'Bài nộp'),
+    ('bi-speedometer2', 'tone-amber', stats.avg|num ~ '%', 'Điểm trung bình'),
+    ('bi-arrow-up-circle', 'tone-green', stats.max|num ~ '%', 'Cao nhất'),
+    ('bi-arrow-down-circle', 'tone-pink', stats.min|num ~ '%', 'Thấp nhất'),
+    ('bi-trophy', 'tone-cyan', stats.pass_rate|num ~ '%', 'Tỉ lệ đạt'),
+  ] %}
+  <div class="col-6 col-lg">
+    <div class="qc-card qc-stat h-100"><div class="icon {{ tone }}"><i class="bi {{ icon }}"></i></div>
+      <div><div class="value">{{ value }}</div><div class="label">{{ label }}</div></div></div>
+  </div>
   {% endfor %}
 </div>
 {% endif %}
 
-<div class="card">
-  <table class="table table-hover mb-0 align-middle">
-    <thead><tr><th>Học sinh</th><th>Điểm</th><th>%</th><th>Kết quả</th><th>Nộp lúc (UTC)</th><th></th></tr></thead>
+<div class="qc-card overflow-hidden">
+  <div class="table-responsive">
+  <table class="table qc-table">
+    <thead><tr><th>Học sinh</th><th>Điểm</th><th style="width:22%">Tỉ lệ</th><th>Kết quả</th><th>Nộp lúc (UTC)</th><th></th></tr></thead>
     <tbody>
     {% for s in submissions %}
       <tr>
-        <td>{{ s.student.name }}<div class="small text-secondary">{{ s.student.email }}</div></td>
+        <td><div class="d-flex align-items-center"><span class="qc-mini-avatar">{{ s.student.name|initial }}</span>
+          <div><div class="fw-semibold">{{ s.student.name }}</div><div class="small text-secondary">{{ s.student.email }}</div></div></div></td>
         {% if s.status == 'graded' %}
-          <td>{{ s.score|num }}/{{ s.max_score|num }}</td><td>{{ s.percent|num }}</td>
-          <td>{% if s.passed %}<span class="badge text-bg-success">Đạt</span>{% else %}<span class="badge text-bg-danger">Chưa đạt</span>{% endif %}</td>
+          <td class="fw-bold">{{ s.score|num }}/{{ s.max_score|num }}</td>
+          <td><div class="d-flex align-items-center gap-2"><div class="qc-progress flex-grow-1"><span style="width: {{ s.percent }}%"></span></div><span class="small fw-semibold">{{ s.percent|num }}%</span></div></td>
+          <td>{% if s.passed %}<span class="qc-chip success"><i class="bi bi-check-circle-fill"></i> Đạt</span>{% else %}<span class="qc-chip danger"><i class="bi bi-x-circle-fill"></i> Chưa đạt</span>{% endif %}</td>
         {% else %}
-          <td colspan="3"><span class="badge text-bg-warning">{{ 'Lỗi chấm' if s.status == 'error' else 'Đang chấm' }}</span></td>
+          <td colspan="3"><span class="qc-chip warning"><i class="bi bi-exclamation-triangle"></i> {{ 'Lỗi chấm' if s.status == 'error' else 'Đang chấm' }}</span></td>
         {% endif %}
-        <td>{{ s.submitted_at.strftime('%d/%m/%Y %H:%M') }}</td>
-        <td class="text-end"><a href="{{ url_for('submission_view', sub_id=s.id) }}" class="btn btn-sm btn-outline-secondary">Chi tiết</a></td>
+        <td class="small text-secondary">{{ s.submitted_at.strftime('%d/%m/%Y %H:%M') }}</td>
+        <td class="text-end"><a href="{{ url_for('submission_view', sub_id=s.id) }}" class="btn btn-sm btn-ghost">Chi tiết <i class="bi bi-chevron-right"></i></a></td>
       </tr>
     {% else %}
-      <tr><td colspan="6" class="text-center text-secondary p-4">Chưa có bài nộp.</td></tr>
+      <tr><td colspan="6"><div class="qc-empty"><i class="bi bi-inbox"></i>Chưa có bài nộp.</div></td></tr>
     {% endfor %}
     </tbody>
   </table>
+  </div>
 </div>
 {% endblock %}

@@ -14,12 +14,17 @@ def build_certificate(*, student_name, exam_title, score, max_score, percent, pa
     pdf.add_font("DejaVu", "", os.path.join(FONT_DIR, "DejaVuSans.ttf"))
     pdf.add_font("DejaVu", "B", os.path.join(FONT_DIR, "DejaVuSans-Bold.ttf"))
 
-    accent = (20, 90, 160) if passed else (120, 120, 120)
+    accent = (91, 91, 247) if passed else (100, 116, 139)
     pdf.set_draw_color(*accent)
     pdf.set_line_width(2.5)
     pdf.rect(10, 10, 277, 190)
     pdf.set_line_width(0.6)
     pdf.rect(15, 15, 267, 180)
+
+    pdf.set_text_color(*accent)
+    pdf.set_font("DejaVu", "B", 11)
+    pdf.set_xy(15, 24)
+    pdf.cell(267, 6, "QUIZCLOUD  ·  AZURE + AWS", align="C")
 
     pdf.set_text_color(*accent)
     pdf.set_font("DejaVu", "B", 32)

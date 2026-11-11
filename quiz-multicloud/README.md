@@ -54,7 +54,21 @@ quiz-multicloud/
 └── tests/
 ```
 
-## Chạy local (không cần tài khoản cloud)
+## Chạy demo trên máy (bấm đúp là chạy)
+
+Chỉ cần cài **Python 3.10 trở lên** (https://www.python.org/downloads/; trên Windows nhớ tick *Add python.exe to PATH*). Không cần tài khoản Azure/AWS.
+
+| Hệ điều hành | Cách chạy |
+|---|---|
+| Windows | Bấm đúp `run_demo.bat` |
+| macOS | Bấm đúp `run_demo.command` (lần đầu: chuột phải → Open) hoặc chạy `./run_demo.sh` |
+| Linux | `./run_demo.sh` |
+
+Lần đầu script tự tạo `.venv`, cài thư viện (khoảng 1 phút), sinh dữ liệu mẫu rồi mở trình duyệt tại http://127.0.0.1:5000.
+Trang đăng nhập có nút **đăng nhập nhanh** cho Giáo viên và Học sinh. Dữ liệu mẫu gồm 3 bài thi và 9 bài nộp đã chấm.
+Muốn làm lại từ đầu: chạy `reset_demo.bat` (Windows) hoặc `./run_demo.sh --reset`.
+
+## Chạy local cho dev (có test)
 
 ```bash
 cd quiz-multicloud
