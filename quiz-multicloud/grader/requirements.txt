@@ -1,0 +1,2 @@
+fpdf2==2.8.3
+# boto3 is already included in the AWS Lambda Python runtime

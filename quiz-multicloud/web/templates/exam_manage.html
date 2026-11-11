@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}{{ exam.title }}{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+  <div>
+    <h3 class="mb-1">{{ exam.title }}
+      {% if exam.published %}<span class="badge text-bg-success fs-6">Đang mở</span>{% else %}<span class="badge text-bg-secondary fs-6">Nháp</span>{% endif %}</h3>
+    <div class="text-secondary">{{ exam.questions|length }} câu · tổng {{ exam.max_score|num }} điểm · {{ exam.duration_minutes }} phút · đạt từ {{ exam.pass_percent|num }}%</div>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-primary" href="{{ url_for('exam_results', exam_id=exam.id) }}"><i class="bi bi-bar-chart"></i> Kết quả</a>
+    <form method="post" action="{{ url_for('exam_publish', exam_id=exam.id) }}">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <button class="btn {{ 'btn-warning' if exam.published else 'btn-success' }}">{{ 'Đóng bài thi' if exam.published else 'Mở cho học sinh' }}</button>
+    </form>
+    <form method="post" action="{{ url_for('exam_delete', exam_id=exam.id) }}" onsubmit="return confirm('Xoá bài thi và toàn bộ bài nộp?')">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <button class="btn btn-outline-danger"><i class="bi bi-trash"></i></button>
+    </form>
+  </div>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-7">
+    {% for q in exam.questions %}
+      <div class="card p-3 mb-3">
+        <div class="d-flex justify-content-between">
+          <b>Câu {{ loop.index }}. {{ q.text }}</b>
+          <span class="text-nowrap ms-2">
+            <span class="badge text-bg-light">{{ q.points|num }} đ</span>
+            {% if q.is_multi %}<span class="badge text-bg-info">Nhiều đáp án</span>{% endif %}
+          </span>
+        </div>
+        <ul class="list-unstyled mt-2 mb-2">
+          {% for opt in q.options %}
+            <li class="{{ 'text-success fw-semibold' if loop.index0 in q.correct }}">{{ letters[loop.index0] }}. {{ opt }}
+              {% if loop.index0 in q.correct %}<i class="bi bi-check-circle-fill"></i>{% endif %}</li>
+          {% endfor %}
+        </ul>
+        {% if not exam.submissions %}
+        <form method="post" action="{{ url_for('question_delete', exam_id=exam.id, qid=q.id) }}" class="text-end">
+          <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-outline-danger">Xoá</button>
+        </form>
+        {% endif %}
+      </div>
+    {% else %}
+      <div class="card p-4 text-secondary text-center">Chưa có câu hỏi.</div>
+    {% endfor %}
+  </div>
+
+  <div class="col-lg-5">
+    {% if not exam.submissions %}
+    <div class="card p-3 mb-4">
+      <h5>Thêm câu hỏi</h5>
+      <form method="post" action="{{ url_for('question_add', exam_id=exam.id) }}">
+        <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+        <textarea name="text" class="form-control mb-2" rows="2" placeholder="Nội dung câu hỏi" required></textarea>
+        {% for i in range(4) %}
+          <div class="input-group mb-2">
+            <div class="input-group-text"><input class="form-check-input mt-0" type="checkbox" name="correct" value="{{ i }}" title="Đáp án đúng"></div>
+            <span class="input-group-text">{{ letters[i] }}</span>
+            <input name="options" class="form-control" placeholder="Lựa chọn {{ letters[i] }}">
+          </div>
+        {% endfor %}
+        <div class="form-text mb-2">Tích vào ô vuông cho (các) đáp án đúng. Chọn nhiều ô = câu nhiều đáp án.</div>
+        <div class="input-group mb-2"><span class="input-group-text">Điểm</span><input name="points" type="number" step="0.25" min="0" value="1" class="form-control"></div>
+        <button class="btn btn-primary w-100">Thêm câu hỏi</button>
+      </form>
+    </div>
+    <div class="card p-3">
+      <h5>Nhập từ file CSV</h5>
+      <p class="small text-secondary mb-2">Cột: <code>question,A,B,C,D,correct,points</code>; correct dạng <code>A</code> hoặc <code>A;C</code>.</p>
+      <form method="post" action="{{ url_for('question_import', exam_id=exam.id) }}" enctype="multipart/form-data">
+        <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+        <input type="file" name="file" accept=".csv" class="form-control mb-2" required>
+        <button class="btn btn-outline-primary w-100">Nhập</button>
+      </form>
+    </div>
+    {% else %}
+      <div class="alert alert-info">Bài thi đã có bài nộp nên không thể sửa câu hỏi.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

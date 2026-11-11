@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Đăng nhập (dev){% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-5">
+    <div class="card p-4">
+      <h4>Đăng nhập</h4>
+      <p class="text-secondary small">Chế độ <b>dev</b> (chạy local). Khi deploy, đặt <code>AUTH_MODE=entra</code> để dùng Microsoft Entra External ID.</p>
+      <form method="post">
+        <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+        <div class="mb-3"><label class="form-label">Họ tên</label><input name="name" class="form-control" required></div>
+        <div class="mb-3"><label class="form-label">Email</label><input name="email" type="email" class="form-control" required></div>
+        <div class="mb-3">
+          <label class="form-label">Vai trò</label>
+          <select name="role" class="form-select">
+            <option value="student">Học sinh</option>
+            <option value="teacher">Giáo viên</option>
+          </select>
+        </div>
+        <button class="btn btn-primary w-100">Đăng nhập</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}{{ exam.title }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 sticky-top bg-body-tertiary py-2">
+  <h4 class="mb-0">{{ exam.title }}</h4>
+  <span class="badge text-bg-dark fs-6"><i class="bi bi-stopwatch"></i> <span id="timer"></span></span>
+</div>
+<form method="post" id="exam-form">
+  <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+  {% for q in exam.questions %}
+    <div class="card p-3 mb-3">
+      <b>Câu {{ loop.index }}. {{ q.text }}</b>
+      {% if q.is_multi %}<div class="small text-info">Chọn tất cả đáp án đúng</div>{% endif %}
+      {% set qloop = loop %}
+      {% for opt in q.options %}
+        <div class="form-check mt-1">
+          <input class="form-check-input" type="{{ 'checkbox' if q.is_multi else 'radio' }}" name="q{{ q.id }}" value="{{ loop.index0 }}" id="q{{ q.id }}_{{ loop.index0 }}">
+          <label class="form-check-label" for="q{{ q.id }}_{{ loop.index0 }}">{{ letters[loop.index0] }}. {{ opt }}</label>
+        </div>
+      {% endfor %}
+    </div>
+  {% endfor %}
+  <button class="btn btn-primary btn-lg" onclick="return confirm('Nộp bài? Bạn chỉ được nộp 1 lần.')">Nộp bài</button>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+  // Client-side countdown; auto-submits when time runs out.
+  let remaining = {{ exam.duration_minutes * 60 }};
+  const el = document.getElementById("timer");
+  const tick = () => {
+    const m = String(Math.floor(remaining / 60)).padStart(2, "0"), s = String(remaining % 60).padStart(2, "0");
+    el.textContent = `${m}:${s}`;
+    if (remaining-- <= 0) { clearInterval(t); document.getElementById("exam-form").submit(); }
+  };
+  const t = setInterval(tick, 1000); tick();
+</script>
+{% endblock %}

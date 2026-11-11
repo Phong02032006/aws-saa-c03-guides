@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Trang chủ{% endblock %}
+{% block content %}
+<div class="row align-items-center py-5">
+  <div class="col-lg-7">
+    <h1 class="display-5 fw-bold">Khảo sát &amp; thi trắc nghiệm trực tuyến</h1>
+    <p class="lead text-secondary">Giáo viên tạo đề, học sinh làm bài, hệ thống tự chấm điểm và cấp chứng nhận PDF.</p>
+    <a href="{{ url_for('auth.login') }}" class="btn btn-primary btn-lg"><i class="bi bi-box-arrow-in-right"></i> Đăng nhập</a>
+  </div>
+  <div class="col-lg-5 mt-4 mt-lg-0">
+    <div class="card p-4">
+      <h6 class="text-uppercase text-secondary small">Kiến trúc đa đám mây</h6>
+      <ul class="list-unstyled mb-0">
+        <li><i class="bi bi-microsoft text-primary"></i> <b>Azure</b>: Entra External ID, App Service, Azure SQL</li>
+        <li class="mt-2"><i class="bi bi-amazon text-warning"></i> <b>AWS</b>: API Gateway, Lambda, S3, SES, CloudWatch</li>
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Kết quả{% endblock %}
+{% block content %}
+<h3>{{ exam.title }}</h3>
+<div class="text-secondary mb-3">{{ sub.student.name }} · nộp lúc {{ sub.submitted_at.strftime('%d/%m/%Y %H:%M') }} (UTC)</div>
+
+{% if sub.status == 'graded' %}
+  <div class="card p-4 mb-4 {{ 'border-start border-success border-5' if sub.passed else 'border-start border-danger border-5' }}">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+      <div>
+        <div class="display-6 fw-bold">{{ sub.score|num }}/{{ sub.max_score|num }} <small class="text-secondary fs-4">({{ sub.percent|num }}%)</small></div>
+        {% if sub.passed %}<span class="badge text-bg-success fs-6">ĐẠT</span>{% else %}<span class="badge text-bg-danger fs-6">CHƯA ĐẠT</span>{% endif %}
+        <span class="small text-secondary ms-2">Mã chứng nhận: {{ sub.certificate_id }}</span>
+      </div>
+      {% if cert_url %}
+        <a href="{{ cert_url }}" class="btn btn-success btn-lg" target="_blank"><i class="bi bi-file-earmark-pdf"></i>
+          {{ 'Tải chứng nhận PDF' if sub.passed else 'Tải phiếu kết quả PDF' }}</a>
+      {% endif %}
+    </div>
+    <div class="small text-secondary mt-2">File PDF được sinh bởi AWS Lambda và lưu trên Amazon S3; link là presigned URL có thời hạn.</div>
+  </div>
+
+  {% for q in exam.questions %}
+    {% set d = details.get(q.id) %}
+    <div class="card p-3 mb-2">
+      <div class="d-flex justify-content-between">
+        <b>Câu {{ loop.index }}. {{ q.text }}</b>
+        {% if d %}{% if d.is_correct %}<i class="bi bi-check-circle-fill text-success fs-5"></i>{% else %}<i class="bi bi-x-circle-fill text-danger fs-5"></i>{% endif %}{% endif %}
+      </div>
+      <ul class="list-unstyled mb-0 mt-1">
+        {% for opt in q.options %}
+          {% set chosen = d and loop.index0 in d.chosen %}
+          <li class="{{ 'text-success fw-semibold' if loop.index0 in q.correct else ('text-danger' if chosen) }}">
+            {{ '●' if chosen else '○' }} {{ letters[loop.index0] }}. {{ opt }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endfor %}
+{% else %}
+  <div class="alert alert-warning">
+    {{ 'Chấm điểm bị lỗi.' if sub.status == 'error' else 'Bài đang được chấm...' }}
+    {% if sub.status == 'error' %}
+    <form method="post" action="{{ url_for('submission_regrade', sub_id=sub.id) }}" class="d-inline">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <button class="btn btn-sm btn-warning ms-2">Chấm lại</button>
+    </form>
+    {% endif %}
+  </div>
+{% endif %}
+{% endblock %}

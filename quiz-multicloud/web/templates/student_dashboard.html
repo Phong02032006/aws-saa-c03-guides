@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Bài thi{% endblock %}
+{% block content %}
+<h3 class="mb-3">Bài thi đang mở</h3>
+<div class="row g-3">
+  {% for e in exams %}
+    {% set s = mine.get(e.id) %}
+    <div class="col-md-6 col-lg-4">
+      <div class="card p-3 h-100">
+        <h5>{{ e.title }}</h5>
+        <p class="text-secondary small flex-grow-1">{{ e.description }}</p>
+        <div class="small mb-2"><i class="bi bi-list-ol"></i> {{ e.questions|length }} câu · <i class="bi bi-clock"></i> {{ e.duration_minutes }} phút</div>
+        {% if s %}
+          <a href="{{ url_for('submission_view', sub_id=s.id) }}" class="btn btn-outline-secondary">
+            Đã làm{% if s.status == 'graded' %} · {{ s.percent|num }}%{% endif %} - xem kết quả</a>
+        {% else %}
+          <a href="{{ url_for('take_exam', exam_id=e.id) }}" class="btn btn-primary">Làm bài</a>
+        {% endif %}
+      </div>
+    </div>
+  {% else %}
+    <div class="col"><div class="card p-4 text-center text-secondary">Chưa có bài thi nào được mở.</div></div>
+  {% endfor %}
+</div>
+{% endblock %}
