@@ -1,25 +1,50 @@
 {% extends "base.html" %}
 {% block title %}Bài thi{% endblock %}
 {% block content %}
-<h3 class="mb-3">Bài thi đang mở</h3>
+{% set done = mine.values()|selectattr('status', 'equalto', 'graded')|list %}
+<div class="qc-page-head">
+  <div>
+    <div class="qc-section-title">Góc học tập</div>
+    <h2>Xin chào, {{ g.user.name }} 👋</h2>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-sm-4"><div class="qc-card qc-stat"><div class="icon tone-indigo"><i class="bi bi-journal-text"></i></div><div><div class="value">{{ exams|length }}</div><div class="label">Bài thi đang mở</div></div></div></div>
+  <div class="col-sm-4"><div class="qc-card qc-stat"><div class="icon tone-green"><i class="bi bi-check2-circle"></i></div><div><div class="value">{{ done|length }}</div><div class="label">Đã hoàn thành</div></div></div></div>
+  <div class="col-sm-4"><div class="qc-card qc-stat"><div class="icon tone-amber"><i class="bi bi-award"></i></div><div><div class="value">{{ done|selectattr('passed')|list|length }}</div><div class="label">Chứng nhận đạt được</div></div></div></div>
+</div>
+
+<div class="qc-section-title mb-3">Bài thi dành cho bạn</div>
 <div class="row g-3">
   {% for e in exams %}
     {% set s = mine.get(e.id) %}
     <div class="col-md-6 col-lg-4">
-      <div class="card p-3 h-100">
+      <div class="qc-card qc-card-hover p-4 h-100 d-flex flex-column">
+        <div class="d-flex justify-content-between mb-2">
+          {% if s and s.status == 'graded' %}
+            {% if s.passed %}<span class="qc-chip success"><i class="bi bi-patch-check-fill"></i> Đạt · {{ s.percent|num }}%</span>
+            {% else %}<span class="qc-chip danger">Chưa đạt · {{ s.percent|num }}%</span>{% endif %}
+          {% elif s %}<span class="qc-chip warning">Đang chấm</span>
+          {% else %}<span class="qc-chip info"><i class="bi bi-hourglass-split"></i> Chưa làm</span>{% endif %}
+          <span class="small text-secondary">{{ e.teacher.name }}</span>
+        </div>
         <h5>{{ e.title }}</h5>
         <p class="text-secondary small flex-grow-1">{{ e.description }}</p>
-        <div class="small mb-2"><i class="bi bi-list-ol"></i> {{ e.questions|length }} câu · <i class="bi bi-clock"></i> {{ e.duration_minutes }} phút</div>
+        <div class="d-flex gap-3 small mb-3">
+          <span><i class="bi bi-list-ol text-primary"></i> {{ e.questions|length }} câu</span>
+          <span><i class="bi bi-clock text-primary"></i> {{ e.duration_minutes }} phút</span>
+          <span><i class="bi bi-trophy text-primary"></i> ≥ {{ e.pass_percent|num }}%</span>
+        </div>
         {% if s %}
-          <a href="{{ url_for('submission_view', sub_id=s.id) }}" class="btn btn-outline-secondary">
-            Đã làm{% if s.status == 'graded' %} · {{ s.percent|num }}%{% endif %} - xem kết quả</a>
+          <a href="{{ url_for('submission_view', sub_id=s.id) }}" class="btn btn-ghost">Xem kết quả <i class="bi bi-arrow-right"></i></a>
         {% else %}
-          <a href="{{ url_for('take_exam', exam_id=e.id) }}" class="btn btn-primary">Làm bài</a>
+          <a href="{{ url_for('take_exam', exam_id=e.id) }}" class="btn btn-primary"><i class="bi bi-play-fill"></i> Làm bài</a>
         {% endif %}
       </div>
     </div>
   {% else %}
-    <div class="col"><div class="card p-4 text-center text-secondary">Chưa có bài thi nào được mở.</div></div>
+    <div class="col"><div class="qc-card qc-empty"><i class="bi bi-cup-hot"></i>Chưa có bài thi nào được mở. Quay lại sau nhé!</div></div>
   {% endfor %}
 </div>
 {% endblock %}

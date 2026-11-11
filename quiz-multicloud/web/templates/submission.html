@@ -1,48 +1,81 @@
 {% extends "base.html" %}
 {% block title %}Kết quả{% endblock %}
 {% block content %}
-<h3>{{ exam.title }}</h3>
-<div class="text-secondary mb-3">{{ sub.student.name }} · nộp lúc {{ sub.submitted_at.strftime('%d/%m/%Y %H:%M') }} (UTC)</div>
+<a href="{{ url_for('index') }}" class="qc-breadcrumb"><i class="bi bi-arrow-left"></i> Bảng điều khiển</a>
+<h2 class="mt-1">{{ exam.title }}</h2>
+<div class="text-secondary mb-4"><i class="bi bi-person"></i> {{ sub.student.name }} · <i class="bi bi-calendar3"></i> {{ sub.submitted_at.strftime('%d/%m/%Y %H:%M') }} (UTC)</div>
 
 {% if sub.status == 'graded' %}
-  <div class="card p-4 mb-4 {{ 'border-start border-success border-5' if sub.passed else 'border-start border-danger border-5' }}">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
-      <div>
-        <div class="display-6 fw-bold">{{ sub.score|num }}/{{ sub.max_score|num }} <small class="text-secondary fs-4">({{ sub.percent|num }}%)</small></div>
-        {% if sub.passed %}<span class="badge text-bg-success fs-6">ĐẠT</span>{% else %}<span class="badge text-bg-danger fs-6">CHƯA ĐẠT</span>{% endif %}
-        <span class="small text-secondary ms-2">Mã chứng nhận: {{ sub.certificate_id }}</span>
+  {% set correct_count = details.values()|selectattr('is_correct')|list|length %}
+  <div class="qc-card p-4 p-md-5 mb-4">
+    <div class="row align-items-center g-4">
+      <div class="col-md-auto d-flex justify-content-center">
+        <div class="qc-ring" style="--p: {{ sub.percent }}; --c: {{ '#10b981' if sub.passed else '#ef4444' }}">
+          <div><div><div class="big">{{ sub.percent|num }}%</div><div class="small text-secondary">{{ sub.score|num }}/{{ sub.max_score|num }} điểm</div></div></div>
+        </div>
       </div>
-      {% if cert_url %}
-        <a href="{{ cert_url }}" class="btn btn-success btn-lg" target="_blank"><i class="bi bi-file-earmark-pdf"></i>
-          {{ 'Tải chứng nhận PDF' if sub.passed else 'Tải phiếu kết quả PDF' }}</a>
-      {% endif %}
+      <div class="col-md">
+        {% if sub.passed %}
+          <span class="qc-chip success fs-6 mb-2"><i class="bi bi-patch-check-fill"></i> ĐẠT</span>
+          <h3>Chúc mừng! Bạn đã vượt qua bài thi 🎉</h3>
+        {% else %}
+          <span class="qc-chip danger fs-6 mb-2"><i class="bi bi-x-circle-fill"></i> CHƯA ĐẠT</span>
+          <h3>Cố gắng hơn ở lần sau nhé!</h3>
+        {% endif %}
+        <div class="d-flex flex-wrap gap-2 mt-2">
+          <span class="qc-chip success"><i class="bi bi-check-lg"></i> {{ correct_count }} câu đúng</span>
+          <span class="qc-chip danger"><i class="bi bi-x-lg"></i> {{ details|length - correct_count }} câu sai</span>
+          <span class="qc-chip"><i class="bi bi-trophy"></i> Ngưỡng đạt {{ exam.pass_percent|num }}%</span>
+        </div>
+      </div>
     </div>
-    <div class="small text-secondary mt-2">File PDF được sinh bởi AWS Lambda và lưu trên Amazon S3; link là presigned URL có thời hạn.</div>
+    {% if cert_url %}
+    <div class="qc-cert-banner d-flex flex-wrap align-items-center gap-3 mt-4">
+      <i class="bi bi-file-earmark-pdf-fill fs-1 text-danger"></i>
+      <div class="flex-grow-1">
+        <div class="fw-bold">{{ 'Chứng nhận hoàn thành' if sub.passed else 'Phiếu kết quả bài thi' }}</div>
+        <div class="small text-secondary">Mã: <b>{{ sub.certificate_id }}</b> · Sinh bởi AWS Lambda, lưu trên Amazon S3, link presigned có thời hạn</div>
+      </div>
+      <a href="{{ cert_url }}" class="btn btn-primary" target="_blank" id="cert-link"><i class="bi bi-download"></i> {{ 'Tải chứng nhận PDF' if sub.passed else 'Tải phiếu kết quả PDF' }}</a>
+    </div>
+    {% endif %}
   </div>
 
+  <div class="qc-section-title mb-3">Xem lại bài làm</div>
   {% for q in exam.questions %}
     {% set d = details.get(q.id) %}
-    <div class="card p-3 mb-2">
-      <div class="d-flex justify-content-between">
-        <b>Câu {{ loop.index }}. {{ q.text }}</b>
-        {% if d %}{% if d.is_correct %}<i class="bi bi-check-circle-fill text-success fs-5"></i>{% else %}<i class="bi bi-x-circle-fill text-danger fs-5"></i>{% endif %}{% endif %}
+    <div class="qc-card p-4 mb-3">
+      <div class="d-flex gap-3">
+        <div class="qc-q-num" style="{{ 'background:#e6fbf4;color:#059669' if d and d.is_correct else 'background:#fdecec;color:#dc2626' }}">{{ loop.index }}</div>
+        <div class="flex-grow-1">
+          <div class="d-flex justify-content-between gap-2 mb-3">
+            <div class="fw-semibold">{{ q.text }}</div>
+            {% if d %}<span class="qc-chip {{ 'success' if d.is_correct else 'danger' }} text-nowrap">{{ d.earned|num }}/{{ d.points|num }} đ</span>{% endif %}
+          </div>
+          {% for opt in q.options %}
+            {% set chosen = d and loop.index0 in d.chosen %}
+            {% set is_correct = loop.index0 in q.correct %}
+            <div class="qc-review-opt {{ 'correct' if is_correct else ('wrong' if chosen) }}">
+              <b>{{ letters[loop.index0] }}</b> {{ opt }}
+              <span class="ms-auto small">
+                {% if chosen %}<i class="bi bi-hand-index-thumb"></i> Bạn chọn{% endif %}
+                {% if is_correct %}<i class="bi bi-check-circle-fill"></i>{% elif chosen %}<i class="bi bi-x-circle-fill"></i>{% endif %}
+              </span>
+            </div>
+          {% endfor %}
+        </div>
       </div>
-      <ul class="list-unstyled mb-0 mt-1">
-        {% for opt in q.options %}
-          {% set chosen = d and loop.index0 in d.chosen %}
-          <li class="{{ 'text-success fw-semibold' if loop.index0 in q.correct else ('text-danger' if chosen) }}">
-            {{ '●' if chosen else '○' }} {{ letters[loop.index0] }}. {{ opt }}</li>
-        {% endfor %}
-      </ul>
     </div>
   {% endfor %}
 {% else %}
-  <div class="alert alert-warning">
-    {{ 'Chấm điểm bị lỗi.' if sub.status == 'error' else 'Bài đang được chấm...' }}
+  <div class="qc-card p-5 text-center">
+    <div class="qc-stat justify-content-center p-0 mb-3"><div class="icon tone-amber"><i class="bi bi-exclamation-triangle"></i></div></div>
+    <h4>{{ 'Chấm điểm bị lỗi' if sub.status == 'error' else 'Bài đang được chấm...' }}</h4>
+    <p class="text-secondary">Bài làm của bạn đã được lưu an toàn.</p>
     {% if sub.status == 'error' %}
-    <form method="post" action="{{ url_for('submission_regrade', sub_id=sub.id) }}" class="d-inline">
+    <form method="post" action="{{ url_for('submission_regrade', sub_id=sub.id) }}" class="m-0">
       <input type="hidden" name="csrf" value="{{ csrf_token() }}">
-      <button class="btn btn-sm btn-warning ms-2">Chấm lại</button>
+      <button class="btn btn-primary"><i class="bi bi-arrow-repeat"></i> Chấm lại</button>
     </form>
     {% endif %}
   </div>

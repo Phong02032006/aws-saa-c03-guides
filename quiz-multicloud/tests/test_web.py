@@ -71,7 +71,7 @@ def test_full_flow(app):
     r = student.post(f"/student/exams/{exam_id}", data={
         "csrf": s, f"q{qids[0]}": "0", f"q{qids[1]}": ["0", "2"], f"q{qids[2]}": "1"})
     sub_page = student.get(r.headers["Location"]).get_data(as_text=True)
-    assert "3/4" in sub_page and "(75%)" in sub_page and "ĐẠT" in sub_page
+    assert "3/4" in sub_page and "75%" in sub_page and "ĐẠT" in sub_page
 
     with app.app_context():
         sub = Submission.query.one()

@@ -1,36 +1,71 @@
 {% extends "base.html" %}
 {% block title %}{{ exam.title }}{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3 sticky-top bg-body-tertiary py-2">
-  <h4 class="mb-0">{{ exam.title }}</h4>
-  <span class="badge text-bg-dark fs-6"><i class="bi bi-stopwatch"></i> <span id="timer"></span></span>
+<div class="qc-exam-bar qc-card px-4 py-3 mb-4 d-flex flex-wrap align-items-center gap-3">
+  <div class="flex-grow-1">
+    <div class="fw-bold">{{ exam.title }}</div>
+    <div class="d-flex align-items-center gap-2 mt-1">
+      <div class="qc-progress flex-grow-1" style="max-width:320px"><span id="progress-bar" style="width:0%"></span></div>
+      <span class="small text-secondary"><span id="answered">0</span>/{{ exam.questions|length }} câu đã trả lời</span>
+    </div>
+  </div>
+  <span class="qc-timer" id="timer-box"><i class="bi bi-stopwatch"></i> <span id="timer"></span></span>
 </div>
+
 <form method="post" id="exam-form">
   <input type="hidden" name="csrf" value="{{ csrf_token() }}">
-  {% for q in exam.questions %}
-    <div class="card p-3 mb-3">
-      <b>Câu {{ loop.index }}. {{ q.text }}</b>
-      {% if q.is_multi %}<div class="small text-info">Chọn tất cả đáp án đúng</div>{% endif %}
-      {% set qloop = loop %}
-      {% for opt in q.options %}
-        <div class="form-check mt-1">
-          <input class="form-check-input" type="{{ 'checkbox' if q.is_multi else 'radio' }}" name="q{{ q.id }}" value="{{ loop.index0 }}" id="q{{ q.id }}_{{ loop.index0 }}">
-          <label class="form-check-label" for="q{{ q.id }}_{{ loop.index0 }}">{{ letters[loop.index0] }}. {{ opt }}</label>
+  <div class="row g-4">
+    <div class="col-lg-9">
+      {% for q in exam.questions %}
+        <div class="qc-card p-4 mb-3" id="card-{{ q.id }}" style="scroll-margin-top:160px">
+          <div class="d-flex gap-3 mb-3">
+            <div class="qc-q-num">{{ loop.index }}</div>
+            <div>
+              <div class="fw-semibold fs-6">{{ q.text }}</div>
+              <div class="small text-secondary">{{ q.points|num }} điểm{% if q.is_multi %} · <span class="text-info fw-semibold">Chọn tất cả đáp án đúng</span>{% endif %}</div>
+            </div>
+          </div>
+          {% for opt in q.options %}
+            <label class="qc-choice" for="q{{ q.id }}_{{ loop.index0 }}">
+              <input type="{{ 'checkbox' if q.is_multi else 'radio' }}" name="q{{ q.id }}" value="{{ loop.index0 }}" id="q{{ q.id }}_{{ loop.index0 }}" data-q="{{ q.id }}">
+              <span class="letter">{{ letters[loop.index0] }}</span>
+              <span>{{ opt }}</span>
+            </label>
+          {% endfor %}
         </div>
       {% endfor %}
     </div>
-  {% endfor %}
-  <button class="btn btn-primary btn-lg" onclick="return confirm('Nộp bài? Bạn chỉ được nộp 1 lần.')">Nộp bài</button>
+    <div class="col-lg-3">
+      <div class="qc-card p-4" style="position:sticky;top:180px">
+        <div class="qc-section-title mb-3">Danh sách câu</div>
+        <div class="qc-nav-grid mb-4">
+          {% for q in exam.questions %}<a href="#card-{{ q.id }}" id="nav-{{ q.id }}">{{ loop.index }}</a>{% endfor %}
+        </div>
+        <button class="btn btn-primary w-100 btn-lg" onclick="return confirm('Nộp bài? Bạn chỉ được nộp 1 lần.')"><i class="bi bi-send-check"></i> Nộp bài</button>
+        <p class="small text-secondary mt-3 mb-0"><i class="bi bi-info-circle"></i> Hết giờ hệ thống sẽ tự động nộp bài.</p>
+      </div>
+    </div>
+  </div>
 </form>
 {% endblock %}
 {% block scripts %}
 <script>
+  const total = {{ exam.questions|length }};
+  const updateProgress = () => {
+    const answered = new Set([...document.querySelectorAll("#exam-form input[data-q]:checked")].map(i => i.dataset.q));
+    document.querySelectorAll(".qc-nav-grid a").forEach(a => a.classList.toggle("done", answered.has(a.id.slice(4))));
+    document.getElementById("answered").textContent = answered.size;
+    document.getElementById("progress-bar").style.width = (total ? 100 * answered.size / total : 0) + "%";
+  };
+  document.getElementById("exam-form").addEventListener("change", updateProgress);
+
   // Client-side countdown; auto-submits when time runs out.
   let remaining = {{ exam.duration_minutes * 60 }};
-  const el = document.getElementById("timer");
+  const el = document.getElementById("timer"), box = document.getElementById("timer-box");
   const tick = () => {
     const m = String(Math.floor(remaining / 60)).padStart(2, "0"), s = String(remaining % 60).padStart(2, "0");
     el.textContent = `${m}:${s}`;
+    box.classList.toggle("low", remaining <= 60);
     if (remaining-- <= 0) { clearInterval(t); document.getElementById("exam-form").submit(); }
   };
   const t = setInterval(tick, 1000); tick();
