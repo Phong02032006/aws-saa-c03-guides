@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Chưa được phân quyền{% endblock %}
+{% block content %}
+<div class="qc-auth-wrap">
+  <div class="qc-card p-5 text-center" style="max-width:520px">
+    <div class="qc-stat justify-content-center p-0 mb-3"><div class="icon tone-amber"><i class="bi bi-person-lock"></i></div></div>
+    <h3>Tài khoản chưa được phân quyền</h3>
+    <p class="text-secondary">Bạn đã đăng nhập thành công nhưng chưa được gán vai trò <b>Teacher</b> hoặc <b>Student</b> trong Microsoft Entra. Hãy liên hệ quản trị viên để được cấp quyền.</p>
+  </div>
+</div>
+{% endblock %}
