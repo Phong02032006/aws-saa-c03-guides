@@ -27,6 +27,15 @@ def is_local():
     return not current_app.config["GRADER_URL"]
 
 
+def is_async():
+    return not is_local() and current_app.config["GRADER_ASYNC"]
+
+
+def enqueue_submission(payload):
+    """Queue a submission on AWS SQS (via API Gateway -> Lambda). The result arrives later via callback."""
+    return _call_remote({**payload, "action": "submit"})
+
+
 def grade_submission(payload):
     if not is_local():
         return _call_remote({**payload, "action": "grade"})

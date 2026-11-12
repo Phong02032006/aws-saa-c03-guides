@@ -2,17 +2,18 @@ import csv
 import io
 import secrets
 import statistics
+from datetime import timedelta
 
 import click
-from flask import (Flask, Response, abort, flash, g, redirect, render_template, request, send_file, session,
-                   url_for)
+from flask import (Flask, Response, abort, flash, g, jsonify, redirect, render_template, request, send_file,
+                   session, url_for)
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 import grader_client
 from auth import bp as auth_bp
 from auth import login_required
 from config import Config
-from models import Exam, Question, Submission, db
+from models import Exam, Question, Submission, db, utcnow
 
 LETTERS = "ABCDEFGH"
 
@@ -42,7 +43,8 @@ def register_security(app):
 
     @app.before_request
     def check_csrf():
-        if request.method == "POST":
+        # The grader callback is server-to-server and authenticated by the shared secret instead.
+        if request.method == "POST" and request.endpoint != "grader_callback":
             sent = request.form.get("csrf", "")
             if not sent or not secrets.compare_digest(sent, session.get("csrf", "")):
                 abort(400, "CSRF token không hợp lệ")
@@ -92,8 +94,25 @@ def _question_stats(exam):
     return out
 
 
+RESULT_FIELDS = ("score", "max_score", "percent", "passed", "details", "certificate_key", "certificate_id")
+# A queued submission with no callback after this long can be re-sent by the student/teacher.
+STUCK_AFTER = timedelta(minutes=2)
+
+
+def _apply_result(sub, result):
+    sub.score, sub.max_score, sub.percent = result["score"], result["max_score"], result["percent"]
+    sub.passed, sub.details = result["passed"], result["details"]
+    sub.certificate_key, sub.certificate_id = result["certificate_key"], result["certificate_id"]
+    sub.status = "graded"
+
+
+def _is_stuck(sub):
+    return sub.status == "pending" and utcnow() - sub.submitted_at > STUCK_AFTER
+
+
 def _grade_and_save(app, sub):
-    """Send a submission to the grader and persist the result. Returns False if grading failed."""
+    """Send a submission to the grader. Sync mode saves the result now; async mode leaves it pending
+    until AWS calls back. Returns False if the grader could not be reached."""
     exam = sub.exam
     payload = {
         "submission_id": sub.id,
@@ -103,16 +122,19 @@ def _grade_and_save(app, sub):
         "answers": sub.answers,
     }
     try:
+        if grader_client.is_async():
+            grader_client.enqueue_submission(payload)
+            sub.status = "pending"
+            sub.submitted_at = utcnow()  # restarts the "stuck" timer on regrade
+            db.session.commit()
+            return True
         result = grader_client.grade_submission(payload)
     except Exception:
         app.logger.exception("grading failed for submission %s", sub.id)
         sub.status = "error"
         db.session.commit()
         return False
-    sub.score, sub.max_score, sub.percent = result["score"], result["max_score"], result["percent"]
-    sub.passed, sub.details = result["passed"], result["details"]
-    sub.certificate_key, sub.certificate_id = result["certificate_key"], result["certificate_id"]
-    sub.status = "graded"
+    _apply_result(sub, result)
     db.session.commit()
     return True
 
@@ -322,13 +344,39 @@ def register_routes(app):
             except Exception:
                 app.logger.exception("presign failed")
         details = {d["question_id"]: d for d in (sub.details or [])}
-        return render_template("submission.html", sub=sub, exam=sub.exam, details=details, cert_url=cert_url)
+        return render_template("submission.html", sub=sub, exam=sub.exam, details=details, cert_url=cert_url,
+                               stuck=_is_stuck(sub))
+
+    @app.route("/submissions/<int:sub_id>/status")
+    @login_required()
+    def submission_status(sub_id):
+        sub = db.get_or_404(Submission, sub_id)
+        if g.user.id not in (sub.student_id, sub.exam.teacher_id):
+            abort(403)
+        return jsonify(status=sub.status, stuck=_is_stuck(sub))
+
+    @app.route("/api/grader/callback", methods=["POST"])
+    def grader_callback():
+        """Called by the AWS Lambda worker after grading a queued submission."""
+        secret = app.config["GRADER_SECRET"]
+        if not secret or not secrets.compare_digest(request.headers.get("x-grader-secret", ""), secret):
+            return jsonify(error="unauthorized"), 401
+        data = request.get_json(silent=True) or {}
+        if not isinstance(data.get("submission_id"), int) or any(k not in data for k in RESULT_FIELDS):
+            return jsonify(error="bad payload"), 400
+        sub = db.session.get(Submission, data["submission_id"])
+        if sub is None:
+            return jsonify(error="unknown submission"), 404
+        _apply_result(sub, data)
+        db.session.commit()
+        app.logger.info("callback: submission %s graded %s/%s", sub.id, sub.score, sub.max_score)
+        return jsonify(status="ok")
 
     @app.route("/submissions/<int:sub_id>/regrade", methods=["POST"])
     @login_required()
     def submission_regrade(sub_id):
         sub = db.get_or_404(Submission, sub_id)
-        if g.user.id not in (sub.student_id, sub.exam.teacher_id) or sub.status != "error":
+        if g.user.id not in (sub.student_id, sub.exam.teacher_id) or not (sub.status == "error" or _is_stuck(sub)):
             abort(403)
         if not _grade_and_save(app, sub):
             flash("Vẫn chưa chấm được, thử lại sau.", "danger")
