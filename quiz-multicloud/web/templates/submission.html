@@ -68,16 +68,37 @@
     </div>
   {% endfor %}
 {% else %}
-  <div class="qc-card p-5 text-center">
-    <div class="qc-stat justify-content-center p-0 mb-3"><div class="icon tone-amber"><i class="bi bi-exclamation-triangle"></i></div></div>
-    <h4>{{ 'Chấm điểm bị lỗi' if sub.status == 'error' else 'Bài đang được chấm...' }}</h4>
-    <p class="text-secondary">Bài làm của bạn đã được lưu an toàn.</p>
+  <div class="qc-card p-5 text-center" id="pending-box">
     {% if sub.status == 'error' %}
-    <form method="post" action="{{ url_for('submission_regrade', sub_id=sub.id) }}" class="m-0">
+      <div class="qc-stat justify-content-center p-0 mb-3"><div class="icon tone-amber"><i class="bi bi-exclamation-triangle"></i></div></div>
+      <h4>Chấm điểm bị lỗi</h4>
+    {% else %}
+      <div class="spinner-border text-primary mb-3" style="width:3rem;height:3rem" role="status"></div>
+      <h4>Bài đang được chấm...</h4>
+      <p class="text-secondary mb-2">Bài nộp đã vào hàng đợi <b>Amazon SQS</b>. AWS Lambda đang chấm điểm và sinh chứng nhận PDF; trang sẽ tự cập nhật.</p>
+    {% endif %}
+    <p class="text-secondary">Bài làm của bạn đã được lưu an toàn.</p>
+    <form method="post" action="{{ url_for('submission_regrade', sub_id=sub.id) }}" class="m-0 {{ '' if sub.status == 'error' or stuck else 'd-none' }}" id="regrade-form">
       <input type="hidden" name="csrf" value="{{ csrf_token() }}">
       <button class="btn btn-primary"><i class="bi bi-arrow-repeat"></i> Chấm lại</button>
     </form>
-    {% endif %}
   </div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if sub.status == 'pending' %}
+<script>
+  // Poll until the AWS worker's callback marks the submission graded, then reload to show the result.
+  const poll = async () => {
+    try {
+      const r = await fetch("{{ url_for('submission_status', sub_id=sub.id) }}", {cache: "no-store"});
+      const s = await r.json();
+      if (s.status !== "pending") return location.reload();
+      if (s.stuck) document.getElementById("regrade-form").classList.remove("d-none");
+    } catch (e) { /* network blip: keep polling */ }
+    setTimeout(poll, 2000);
+  };
+  setTimeout(poll, 1500);
+</script>
 {% endif %}
 {% endblock %}

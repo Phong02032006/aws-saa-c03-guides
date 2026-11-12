@@ -47,6 +47,7 @@ Trong các tổ hợp được đề xuất, nhóm lựa chọn **AWS + Microsof
 | Quản lý danh tính, phân quyền Giáo viên/Học sinh | Azure (Microsoft Entra External ID) | Microsoft có kinh nghiệm lâu năm về quản lý danh tính doanh nghiệp (Active Directory); các trường học thường đã dùng Microsoft 365 nên dễ tích hợp; miễn phí cho 50.000 người dùng hoạt động hàng tháng đầu tiên. |
 | Cơ sở dữ liệu câu hỏi, bài làm, điểm số | Azure (Azure SQL Database) | Dữ liệu có cấu trúc quan hệ rõ ràng (bài thi – câu hỏi – bài nộp – người dùng); Azure SQL là SQL Server được quản lý hoàn toàn, có gói miễn phí không giới hạn thời gian. |
 | Ứng dụng web | Azure (App Service) | Nằm cùng nền tảng với Entra ID và Azure SQL, giảm độ trễ và đơn giản hóa cấu hình mạng; có gói F1 miễn phí. |
+| Hàng đợi bài nộp | AWS (Amazon SQS) | Tách việc nhận bài khỏi việc chấm: web trả lời ngay kể cả khi cả lớp nộp cùng lúc; SQS tự thử lại khi lỗi và chuyển tin nhắn hỏng sang dead-letter queue; 1 triệu request miễn phí mỗi tháng. |
 | Chấm điểm, sinh PDF | AWS (Lambda + API Gateway) | AWS Lambda là dịch vụ serverless ra đời sớm và phổ biến nhất; tự động co giãn theo số bài nộp; nằm trong nhóm dịch vụ miễn phí vĩnh viễn với 1 triệu request mỗi tháng. |
 | Lưu trữ chứng nhận, link tải có thời hạn | AWS (Amazon S3) | S3 là dịch vụ lưu trữ đối tượng tiêu chuẩn của ngành, hỗ trợ sẵn presigned URL để cấp quyền tải tạm thời mà không cần công khai bucket. |
 | Gửi email kết quả, giám sát | AWS (SES, CloudWatch) | Tích hợp sẵn với Lambda, chi phí rất thấp. |
@@ -129,9 +130,10 @@ Amazon Web Services là nền tảng điện toán đám mây của tập đoàn
 
 - **AWS Lambda:** chứa mã Python chấm điểm và sinh PDF. Mỗi lần học sinh nộp bài, Lambda được gọi một lần; khi nhiều học sinh nộp cùng lúc, AWS tự động chạy nhiều bản song song. Giới hạn đáng chú ý: thời gian chạy tối đa 15 phút mỗi lần gọi, bộ nhớ cấu hình từ 128 MB đến 10.240 MB.
 - **Amazon API Gateway (HTTP API):** cung cấp địa chỉ HTTPS công khai để ứng dụng web trên Azure gọi tới Lambda.
+- **Amazon SQS:** hàng đợi chứa các bài nộp chờ chấm. Lambda nhận bài từ API Gateway và đẩy vào hàng đợi; hàng đợi lại kích hoạt Lambda để chấm từng bài. Nếu xử lý lỗi, tin nhắn quay lại hàng đợi sau thời gian *visibility timeout*; sau 3 lần thất bại, tin nhắn chuyển sang **dead-letter queue** để kiểm tra thủ công.
 - **Amazon S3:** lưu file PDF trong bucket riêng tư (bật *Block Public Access*). Người dùng tải file qua **presigned URL** – đường dẫn có chữ ký số và thời hạn (tối đa 7 ngày với chữ ký Signature Version 4), hết hạn thì không dùng được nữa.
 - **Amazon SES:** gửi email thông báo kết quả kèm link tải chứng nhận. Ở chế độ sandbox, SES chỉ gửi tới địa chỉ đã xác minh, đủ cho mục đích demo.
-- **AWS IAM:** cấp cho Lambda một vai trò (role) chỉ có quyền ghi/đọc thư mục `certificates/` trong đúng một bucket và quyền gửi email – tuân thủ nguyên tắc đặc quyền tối thiểu.
+- **AWS IAM:** cấp cho Lambda một vai trò (role) chỉ có quyền ghi/đọc thư mục `certificates/` trong đúng một bucket, quyền gửi tin nhắn vào đúng một hàng đợi SQS và quyền gửi email – tuân thủ nguyên tắc đặc quyền tối thiểu.
 - **Amazon CloudWatch:** lưu log mỗi lần chấm điểm, phục vụ theo dõi và gỡ lỗi.
 
 ## 2.3. Microsoft Azure
@@ -290,16 +292,18 @@ Luồng xử lý chính khi học sinh làm bài:
 1. Học sinh truy cập ứng dụng web trên **Azure App Service**, đăng nhập qua **Entra External ID** và nhận vai trò `Student`.
 2. Học sinh chọn bài thi; dữ liệu đề được đọc từ **Azure SQL Database**.
 3. Khi nộp bài, ứng dụng web lưu bài làm vào Azure SQL Database (trạng thái "đang chấm"), sau đó gửi yêu cầu HTTPS gồm đáp án của học sinh và đáp án đúng tới **Amazon API Gateway**, kèm khóa bí mật dùng chung trong header để xác thực.
-4. API Gateway chuyển yêu cầu tới **AWS Lambda**. Lambda chấm điểm, sinh file PDF, ghi vào **Amazon S3**, tạo **presigned URL**, gửi email qua **Amazon SES** và ghi log vào **CloudWatch**.
-5. Lambda trả kết quả (điểm, chi tiết từng câu, mã chứng nhận, đường dẫn file) về ứng dụng web; ứng dụng cập nhật điểm vào Azure SQL Database và hiển thị cho học sinh.
-6. Mỗi lần học sinh hoặc giáo viên mở lại trang kết quả, ứng dụng xin một presigned URL mới, vì URL cũ đã hết hạn.
+4. API Gateway chuyển yêu cầu tới **AWS Lambda**. Lambda kiểm tra dữ liệu, đẩy bài nộp vào hàng đợi **Amazon SQS** và trả lời ngay "đã nhận". Học sinh thấy trang "Bài đang được chấm…", trang tự kiểm tra trạng thái vài giây một lần.
+5. SQS kích hoạt Lambda xử lý bài trong hàng đợi: chấm điểm, sinh file PDF, ghi vào **Amazon S3** và ghi log vào **CloudWatch**.
+6. Lambda gọi ngược (**callback**) về địa chỉ `/api/grader/callback` của ứng dụng web, kèm khóa bí mật, để gửi kết quả (điểm, chi tiết từng câu, mã chứng nhận, đường dẫn file). Ứng dụng cập nhật điểm vào Azure SQL Database; trang của học sinh tự chuyển sang hiển thị kết quả. Sau đó Lambda gửi email kèm **presigned URL** qua **Amazon SES**.
+7. Mỗi lần học sinh hoặc giáo viên mở lại trang kết quả, ứng dụng xin một presigned URL mới, vì URL cũ đã hết hạn.
 
 **Các quyết định thiết kế quan trọng:**
 
 - **Lambda không kết nối trực tiếp tới Azure SQL Database.** Nếu làm vậy, phải cài trình điều khiển ODBC cho SQL Server trong môi trường Lambda và mở tường lửa của Azure SQL cho dải IP không cố định của Lambda. Thay vào đó, ứng dụng web gửi đủ dữ liệu cần chấm, Lambda chỉ tính toán và trả kết quả – thành phần trên AWS trở thành *stateless* (không lưu trạng thái), dễ thay thế và dễ kiểm thử.
-- **Ranh giới giữa hai đám mây là một API HTTP duy nhất** với hai thao tác: `grade` (chấm điểm) và `presign` (lấy link tải mới). Hợp đồng dữ liệu đơn giản giúp hai thành viên phụ trách hai nền tảng làm việc song song.
+- **Ranh giới giữa hai đám mây là một API HTTP duy nhất** với ba thao tác: `submit` (xếp bài vào hàng đợi), `grade` (chấm đồng bộ, dùng khi thử nghiệm) và `presign` (lấy link tải mới), cùng một địa chỉ callback phía web để nhận kết quả. Hợp đồng dữ liệu đơn giản giúp hai thành viên phụ trách hai nền tảng làm việc song song.
 - **Dữ liệu cá nhân tối thiểu đi qua AWS:** chỉ tên, email học sinh (để in chứng nhận và gửi email), tên bài thi và đáp án.
-- **Xử lý lỗi:** nếu lời gọi sang AWS thất bại, bài làm vẫn được lưu trên Azure với trạng thái "lỗi chấm" và có thể chấm lại sau.
+- **Xử lý bất đồng bộ qua hàng đợi:** khi hết giờ, hàng chục học sinh có thể nộp cùng một lúc. Nhờ SQS, ứng dụng web chỉ mất vài trăm mili giây để xếp bài vào hàng đợi rồi trả lời ngay, còn việc chấm và sinh PDF được Lambda xử lý song song phía sau. Nếu bước callback hoặc sinh PDF lỗi, SQS tự gửi lại; tin nhắn lỗi quá 3 lần được giữ trong dead-letter queue thay vì mất.
+- **Xử lý lỗi:** nếu lời gọi sang AWS thất bại, bài làm vẫn được lưu trên Azure với trạng thái "lỗi chấm" và có thể chấm lại sau. Bài nằm ở trạng thái "đang chấm" quá 2 phút cũng có thể được gửi lại.
 
 # CHƯƠNG 4. PHÂN TÍCH, ĐÁNH GIÁ ƯU KHUYẾT ĐIỂM CỦA AWS VÀ AZURE
 
@@ -367,7 +371,7 @@ Luồng xử lý chính khi học sinh làm bài:
 | Nhược điểm | Cách khắc phục trong QuizCloud |
 |---|---|
 | Phức tạp hơn khi phải quản trị hai nền tảng, hai hệ thống phân quyền, hai hóa đơn | Ranh giới giữa hai đám mây chỉ là một API; mỗi thành viên phụ trách một nền tảng; bật Budget Alert trên cả hai |
-| Độ trễ mạng khi gọi qua Internet giữa hai đám mây | Chọn Region gần nhau (Azure Southeast Asia và AWS ap-southeast-1 đều ở Singapore); mỗi lần nộp bài chỉ gọi một lần |
+| Độ trễ mạng khi gọi qua Internet giữa hai đám mây | Chọn Region gần nhau (Azure Southeast Asia và AWS ap-southeast-1 đều ở Singapore); mỗi bài nộp chỉ cần một lời gọi sang AWS và một lời gọi callback; người dùng không phải chờ nhờ xử lý bất đồng bộ |
 | Phí truyền dữ liệu ra Internet (egress) | Dữ liệu gửi qua lại chỉ vài KB; file PDF được tải thẳng từ S3 về trình duyệt, không đi qua Azure |
 | Bảo mật kênh giao tiếp giữa hai đám mây | Dùng HTTPS và khóa bí mật dùng chung trong header, so sánh theo thời gian hằng định; có thể nâng cấp lên chữ ký HMAC hoặc OAuth client credentials |
 | Quản lý bí mật phân tán | Lưu bí mật trong cấu hình môi trường của App Service và Lambda, không đưa vào mã nguồn; có thể chuyển sang Azure Key Vault/AWS Secrets Manager |
