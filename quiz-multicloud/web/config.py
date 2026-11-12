@@ -18,4 +18,6 @@ class Config:
     # Empty GRADER_URL = grade in-process and store PDFs locally (no AWS needed).
     GRADER_URL = os.environ.get("GRADER_URL", "")
     GRADER_SECRET = os.environ.get("GRADER_SECRET", "")
+    # true = queue submissions on SQS and receive results via /api/grader/callback (needs GRADER_URL).
+    GRADER_ASYNC = os.environ.get("GRADER_ASYNC", "").lower() in ("1", "true", "yes")
     LOCAL_CERT_DIR = os.environ.get("LOCAL_CERT_DIR", "")

@@ -100,3 +100,80 @@ def test_handler_presign_validates_key(aws):
 
 def test_handler_bad_payload(aws):
     assert handler.lambda_handler(_event({"action": "grade"}), None)["statusCode"] == 400
+
+
+class FakeSQS:
+    def __init__(self):
+        self.messages = []
+
+    def send_message(self, QueueUrl, MessageBody):
+        self.messages.append((QueueUrl, MessageBody))
+        return {"MessageId": f"m{len(self.messages)}"}
+
+
+@pytest.fixture
+def queue(aws, monkeypatch):
+    sqs = FakeSQS()
+    handler._clients["sqs"] = sqs
+    monkeypatch.setenv("GRADING_QUEUE_URL", "https://sqs.example/queue")
+    monkeypatch.setenv("WEB_CALLBACK_URL", "https://web.example/api/grader/callback")
+    return sqs
+
+
+def test_submit_enqueues_without_grading(aws, queue):
+    s3, _ = aws
+    resp = handler.lambda_handler(_event({**PAYLOAD, "action": "submit"}), None)
+    assert resp["statusCode"] == 202 and json.loads(resp["body"])["status"] == "queued"
+    url, body = queue.messages[0]
+    assert url == "https://sqs.example/queue" and json.loads(body)["submission_id"] == 7
+    assert s3.objects == {}
+    bad = handler.lambda_handler(_event({"action": "submit", "exam": {}}), None)
+    assert bad["statusCode"] == 400 and not queue.messages[1:]
+
+
+def _sqs_event(payload):
+    return {"Records": [{"eventSource": "aws:sqs", "messageId": "m1", "body": json.dumps(payload)}]}
+
+
+def test_sqs_worker_grades_and_calls_back(aws, queue, monkeypatch):
+    s3, ses = aws
+    calls = []
+    monkeypatch.setattr(handler, "_post_callback", calls.append)
+    assert handler.lambda_handler(_sqs_event(PAYLOAD), None) == {"processed": 1}
+    cb = calls[0]
+    assert cb["submission_id"] == 7 and cb["score"] == 3 and cb["passed"] is True
+    assert cb["certificate_key"] in s3.objects
+    assert ses.sent[0]["Destination"]["ToAddresses"] == ["b@example.com"]
+
+
+def test_sqs_worker_raises_when_callback_fails_so_sqs_retries(aws, queue, monkeypatch):
+    _, ses = aws
+
+    def down(body):
+        raise ConnectionError("web app unreachable")
+
+    monkeypatch.setattr(handler, "_post_callback", down)
+    with pytest.raises(ConnectionError):
+        handler.lambda_handler(_sqs_event(PAYLOAD), None)
+    assert ses.sent == []  # no email for a result the web app never received
+
+
+def test_post_callback_sends_secret(aws, queue, monkeypatch):
+    seen = {}
+
+    class Resp:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, timeout):
+        seen.update(url=req.full_url, secret=req.get_header("X-grader-secret"), body=json.loads(req.data))
+        return Resp()
+
+    monkeypatch.setattr(handler.urllib.request, "urlopen", fake_urlopen)
+    handler._post_callback({"submission_id": 7})
+    assert seen == {"url": "https://web.example/api/grader/callback", "secret": "s3cret", "body": {"submission_id": 7}}

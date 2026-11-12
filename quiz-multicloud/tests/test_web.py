@@ -119,3 +119,97 @@ def test_grader_failure_marks_error_and_regrade(app, monkeypatch):
     sub_path = r.headers["Location"]
     student.post(f"{sub_path}/regrade", data={"csrf": csrf(student, sub_path)})
     assert "1/1" in student.get(sub_path).get_data(as_text=True)
+
+
+def test_async_sqs_flow_with_callback(app, monkeypatch, tmp_path):
+    """Async mode: submit is queued (fake AWS), page shows pending, Lambda's callback completes it."""
+    import grader_client
+    from service import process_submission
+
+    app.config.update(GRADER_URL="https://api.example/grade", GRADER_SECRET="s3cret", GRADER_ASYNC=True)
+    queued = []
+
+    class FakeResp:
+        def __init__(self, body):
+            self.body = body
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return self.body
+
+    def fake_post(url, json, headers, timeout):
+        assert headers["x-grader-secret"] == "s3cret"
+        if json["action"] == "submit":
+            queued.append(json)
+            return FakeResp({"status": "queued", "message_id": "m1"})
+        return FakeResp({"certificate_url": f"https://s3.example/{json['certificate_key']}?sig=1"})
+
+    monkeypatch.setattr(grader_client.requests, "post", fake_post)
+
+    teacher, student = app.test_client(), app.test_client()
+    login(teacher, "T", "t@x.edu", "teacher")
+    login(student, "S", "s@x.edu", "student")
+    t = csrf(teacher, "/teacher")
+    r = teacher.post("/teacher/exams/new", data={"csrf": t, "title": "Async"})
+    exam_id = int(r.headers["Location"].split("/")[-1])
+    teacher.post(f"/teacher/exams/{exam_id}/questions", data={
+        "csrf": t, "text": "Q", "options": ["a", "b"], "correct": ["1"]})
+    teacher.post(f"/teacher/exams/{exam_id}/publish", data={"csrf": t})
+
+    s = csrf(student, f"/student/exams/{exam_id}")
+    r = student.post(f"/student/exams/{exam_id}", data={"csrf": s, "q1": "1"})
+    sub_path = r.headers["Location"]
+    assert len(queued) == 1 and queued[0]["answers"] == {"1": [1]}
+    page = student.get(sub_path).get_data(as_text=True)
+    assert "Bài đang được chấm" in page and "Amazon SQS" in page
+    assert student.get(f"{sub_path}/status").get_json() == {"status": "pending", "stuck": False}
+    # Not stuck yet, so regrade is refused.
+    assert student.post(f"{sub_path}/regrade", data={"csrf": csrf(student, sub_path)}).status_code == 403
+
+    # What the Lambda worker computes and posts back.
+    result = process_submission({k: v for k, v in queued[0].items() if k != "action"}, lambda k, b: None)
+    body = {"submission_id": queued[0]["submission_id"], **result}
+    anon = app.test_client()
+    assert anon.post("/api/grader/callback", json=body).status_code == 401
+    assert anon.post("/api/grader/callback", json=body, headers={"x-grader-secret": "wrong"}).status_code == 401
+    assert anon.post("/api/grader/callback", json={"submission_id": 1},
+                     headers={"x-grader-secret": "s3cret"}).status_code == 400
+    assert anon.post("/api/grader/callback", json={**body, "submission_id": 999},
+                     headers={"x-grader-secret": "s3cret"}).status_code == 404
+    assert anon.post("/api/grader/callback", json=body, headers={"x-grader-secret": "s3cret"}).status_code == 200
+
+    assert student.get(f"{sub_path}/status").get_json()["status"] == "graded"
+    page = student.get(sub_path).get_data(as_text=True)
+    assert "1/1" in page and "https://s3.example/certificates/" in page
+
+
+def test_async_stuck_submission_can_be_resent(app, monkeypatch):
+    import grader_client
+    from datetime import timedelta
+
+    app.config.update(GRADER_URL="https://api.example/grade", GRADER_SECRET="s", GRADER_ASYNC=True)
+    sent = []
+    monkeypatch.setattr(grader_client, "enqueue_submission", sent.append)
+
+    teacher, student = app.test_client(), app.test_client()
+    login(teacher, "T", "t@x.edu", "teacher")
+    login(student, "S", "s@x.edu", "student")
+    t = csrf(teacher, "/teacher")
+    r = teacher.post("/teacher/exams/new", data={"csrf": t, "title": "E"})
+    exam_id = int(r.headers["Location"].split("/")[-1])
+    teacher.post(f"/teacher/exams/{exam_id}/questions", data={
+        "csrf": t, "text": "Q", "options": ["a", "b"], "correct": ["0"]})
+    teacher.post(f"/teacher/exams/{exam_id}/publish", data={"csrf": t})
+    r = student.post(f"/student/exams/{exam_id}", data={"csrf": csrf(student, f"/student/exams/{exam_id}"), "q1": "0"})
+    sub_path = r.headers["Location"]
+
+    with app.app_context():
+        sub = Submission.query.one()
+        sub.submitted_at -= timedelta(minutes=5)
+        db.session.commit()
+    assert student.get(f"{sub_path}/status").get_json()["stuck"] is True
+    student.post(f"{sub_path}/regrade", data={"csrf": csrf(student, sub_path)})
+    assert len(sent) == 2
+    assert student.get(f"{sub_path}/status").get_json() == {"status": "pending", "stuck": False}

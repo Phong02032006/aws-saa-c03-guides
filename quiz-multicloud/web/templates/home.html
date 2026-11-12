@@ -34,7 +34,7 @@
 <div class="row g-4 mb-5">
   {% for icon, tone, title, text in [
     ('bi-shield-lock', 'tone-indigo', 'Phân quyền chặt chẽ', 'Đăng nhập Microsoft Entra ID, vai trò Giáo viên / Học sinh tách biệt.'),
-    ('bi-lightning-charge', 'tone-amber', 'Chấm điểm tức thì', 'AWS Lambda chấm bài serverless, hỗ trợ câu một hoặc nhiều đáp án.'),
+    ('bi-lightning-charge', 'tone-amber', 'Chấm điểm tức thì', 'Hàng đợi SQS + AWS Lambda chấm bài serverless, chịu tải khi cả lớp nộp cùng lúc.'),
     ('bi-file-earmark-richtext', 'tone-pink', 'Sinh file động', 'Chứng nhận PDF, báo cáo HTML in được và xuất bảng điểm CSV.'),
     ('bi-graph-up-arrow', 'tone-green', 'Thống kê trực quan', 'Điểm trung bình, tỉ lệ đạt và tỉ lệ đúng của từng câu hỏi.'),
   ] %}
@@ -65,7 +65,7 @@
       <div class="qc-cloud-box h-100">
         <div class="fw-bold mb-2"><i class="bi bi-amazon text-warning"></i> Amazon Web Services</div>
         <div class="d-flex flex-wrap gap-2">
-          <span class="qc-chip warning">API Gateway</span><span class="qc-chip warning">Lambda</span><span class="qc-chip warning">S3</span><span class="qc-chip warning">SES</span><span class="qc-chip warning">CloudWatch</span>
+          <span class="qc-chip warning">API Gateway</span><span class="qc-chip warning">SQS</span><span class="qc-chip warning">Lambda</span><span class="qc-chip warning">S3</span><span class="qc-chip warning">SES</span><span class="qc-chip warning">CloudWatch</span>
         </div>
       </div>
     </div>
